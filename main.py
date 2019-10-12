@@ -24,7 +24,7 @@ def formatResult(result):
     print('\n')    
 
 if __name__ == "__main__":  
-    # TODO: Connect to postgres db hosted on heroku
+    # Connect to postgres db hosted on heroku
     # Psycopg is level 2 thread safe
     try:
         threaded_postgreSQL_pool = pool.ThreadedConnectionPool(
