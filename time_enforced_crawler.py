@@ -6,8 +6,7 @@ import time
 
 class PyCrawler(object):    
     def __init__(self, starting_url, threaded_postgreSQL_pool):    
-        self.starting_url = starting_url    
-        self.visited = set()
+        self.starting_url = starting_url
         self.connection = threaded_postgreSQL_pool.getconn()
         if not self.connection:
             print('[ERROR] Connection in pyCrawler failed')
@@ -30,6 +29,7 @@ class PyCrawler(object):
                 link_with_base = base + link    
                 links[i] = link_with_base    
 
+        # exclude email links
         return (response_time, set(filter(lambda x: 'mailto' not in x, links)))
 
     def extract_info(self, url):    
@@ -41,14 +41,17 @@ class PyCrawler(object):
         cursor = self.connection.cursor()
         cursor.execute("select * from websites where url='%s';" % (link))
         is_visited = cursor.fetchone()
+        if is_visited:
+            print('Existed!')
         cursor.close()
         return is_visited
 
     def addToVisited(self, link, response_time):
         cursor = self.connection.cursor()
         cursor.execute("insert into websites values ('%s', '%g');" % (link, response_time))
-        cursor.execute("select * from websites where url='%s';" % (link))
+        cursor.execute("select * from websites where url='%s' and responseTime='%g';" % (link, response_time))
         is_added = cursor.fetchone()
+        self.connection.commit()
         cursor.close()
         return is_added    
 

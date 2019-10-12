@@ -6,14 +6,22 @@ from time_enforcer import TimeRemainingExpired
 import time
 import urllib.request
 
-EXPIRE_TIME = 5
-START_URL = 'https://melodiessim.netlify.com'
+EXPIRE_TIME = 10 # amount of time before automatically kill crawl
+NUM_WORKERS = 5 # max number of threads spawn simultaneously
 
-def d(s):
-    for i in range(10):
-        time.sleep(0.1)
-        print(s + str(i))
+URLS = ['https://melodiessim.netlify.com',
+        'https://www.hodlnaut.com/',
+        'http://definitelytyped.org/directory/learn.html',
+        'http://www.bbc.co.uk/',
+        'http://some-made-up-domain.com/']
 
+# Format STDOUT of all links/responseTimes at the end of the program
+def formatResult(result):
+    print('no.' + '      ' + 'link' + '                                ' + 'response time')
+    for i, val in enumerate(result):
+        link, response_time = val
+        print(str(i) + '        ' + link + '        ' + str(response_time))
+    print('\n')    
 
 if __name__ == "__main__":  
     # TODO: Connect to postgres db hosted on heroku
@@ -22,15 +30,14 @@ if __name__ == "__main__":
         threaded_postgreSQL_pool = pool.ThreadedConnectionPool(
                                     1,
                                     10, 
-                                    user = "melodies",
-                                    password = "postgres",
-                                    host = "127.0.0.1",
+                                    user = "ufutlmdalowgfq",
+                                    password = "a6a069571a7a58935db7caeb0bba7b62ebb56a4677a610a867c9bf6c11f1b133",
+                                    host = "ec2-54-197-238-238.compute-1.amazonaws.com",
                                     port = "5432",
-                                    database = "sequeltest")
+                                    database = "d7b5eg8oinsv4n")
 
         print("[INFO] Postgres connection pool created successfully")
 
-        
         print("[INFO] Postgres initialising...")
 
         # Use getconn() method to Get Connection from connection pool
@@ -40,53 +47,38 @@ if __name__ == "__main__":
             # Delete table if exists
             ps_cursor.execute("drop table websites;")
             print('[INFO] Deleted websites table')
-            # table_exists = ps_cursor.fetchone()[0]
-            # if table_exists:
-            #     ps_cursor.execute("drop table websites;")
-            #     print('[INFO] Deleted websites table')
 
             ps_cursor.execute("create table websites(url VARCHAR (3000) PRIMARY KEY, responseTime NUMERIC UNIQUE NOT NULL);")
             print('[INFO] Created websites table')
             ps_connection.commit()
             ps_cursor.close()
 
-        # Run crawler
-        crawler = PyCrawler(START_URL, threaded_postgreSQL_pool)
-        print("[INFO] Starting to crawl from " + START_URL)
+        def runCrawler(url, threaded_postgreSQL_pool):
+            # Run crawler with START_URL
+            crawler = PyCrawler(url, threaded_postgreSQL_pool)
+            print("[INFO] Starting to crawl from " + url)
+            try:
+                crawler.start(time_remaining=EXPIRE_TIME) # alter time_remaining to allow crawler to run for max time_remaining secs
+            except TimeRemainingExpired:
+                print('[EXPIRED] Time has expired. Killing crawlers...')
 
-        # URLS = ['http://www.foxnews.com/',
-        #         'http://www.cnn.com/',
-        #         'http://europe.wsj.com/',
-        #         'http://www.bbc.co.uk/',
-        #         'http://some-made-up-domain.com/']
 
-        # # Retrieve a single page and report the URL and contents
-        # def load_url(url, timeout):
-        #     with urllib.request.urlopen(url, timeout=timeout) as conn:
-        #         return conn.read()
-
-        # # We can use a with statement to ensure threads are cleaned up promptly
-        # with ThreadPoolExecutor(max_workers=5) as executor:
-        #     # Start the load operations and mark each future with its URL
-        #     future_to_url = {executor.submit(load_url, url, 60): url for url in URLS}
-        #     for future in as_completed(future_to_url):
-        #         url = future_to_url[future]
-        #         try:
-        #             data = future.result()
-        #         except Exception as exc:
-        #             print('%r generated an exception: %s' % (url, exc))
-        #         else:
-        #             print('%r page is %d bytes' % (url, len(data)))
-
-        try:
-            crawler.start(time_remaining=EXPIRE_TIME) # alter time_remaining to allow crawler to run for max time_remaining secs
-        except TimeRemainingExpired:
-            print('[INFO] Time has expired. Killing crawlers...')
+        # We can use a with statement to ensure threads are cleaned up promptly
+        with ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
+            # Start the load operations and mark each future with its URL
+            future_to_url = {executor.submit(runCrawler, url, threaded_postgreSQL_pool) for url in URLS}
 
     except (Exception, psycopg2.DatabaseError) as error :
         print ("[ERROR] Error connecting to PostgreSQL: ", error)
     finally:
+        # print out all entries in db
+        ps_cursor = ps_connection.cursor()
+        ps_cursor.execute("select * from websites;")
+        result = ps_cursor.fetchall()
+        print("[INFO] Printing all links visited")
+        formatResult(result)
+
         #closing database threaded pool connection.
-            if(threaded_postgreSQL_pool):
-                threaded_postgreSQL_pool.closeall()
-                print("[INFO] PostgreSQL threaded_postgreSQL_pool closed")
+        if(threaded_postgreSQL_pool):
+            threaded_postgreSQL_pool.closeall()
+            print("[INFO] PostgreSQL threaded_postgreSQL_pool closed")
